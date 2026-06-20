@@ -1,10 +1,9 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-import os
 
-# Agar database file exist nahi karti, to CSV files se naya bana do
-if not os.path.exists("food_wastage.db"):
+# Database ko hamesha fresh banao (taaki purana/corrupt file na ho cloud par)
+try:
     providers = pd.read_csv("providers_data.csv")
     receivers = pd.read_csv("receivers_data.csv")
     food_listings = pd.read_csv("food_listings_cleaned.csv")
@@ -16,6 +15,9 @@ if not os.path.exists("food_wastage.db"):
     food_listings.to_sql("food_listings", conn_setup, if_exists="replace", index=False)
     claims.to_sql("claims", conn_setup, if_exists="replace", index=False)
     conn_setup.close()
+except Exception as e:
+    st.error(f"Database setup failed: {e}")
+    st.stop()
 
 # Page setup
 st.set_page_config(page_title="Local Food Wastage Management", layout="wide")
@@ -38,13 +40,11 @@ tab1, tab2, tab3, tab4 = st.tabs([
 with tab1:
     st.subheader("Browse Available Food Listings")
 
-    # Get unique values for filter dropdowns
     cities = pd.read_sql_query("SELECT DISTINCT Location FROM food_listings ORDER BY Location", conn)
     providers_list = pd.read_sql_query("SELECT DISTINCT Provider_Type FROM food_listings ORDER BY Provider_Type", conn)
     food_types = pd.read_sql_query("SELECT DISTINCT Food_Type FROM food_listings ORDER BY Food_Type", conn)
     meal_types = pd.read_sql_query("SELECT DISTINCT Meal_Type FROM food_listings ORDER BY Meal_Type", conn)
 
-    # Create 4 filter dropdowns side by side
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
@@ -56,7 +56,6 @@ with tab1:
     with col4:
         selected_meal_type = st.selectbox("Meal Type", ["All"] + meal_types["Meal_Type"].tolist())
 
-    # Build the SQL query based on selected filters
     query = "SELECT * FROM food_listings WHERE 1=1"
     params = []
 
@@ -78,11 +77,11 @@ with tab1:
     st.write(f"**{len(filtered_df)} results found**")
     st.dataframe(filtered_df, use_container_width=True)
 
-    # ---------- TAB 2: SQL Insights ----------
+# ---------- TAB 2: SQL Insights ----------
 with tab2:
- st.subheader("Data Analysis & Insights (15 SQL Queries)")
+    st.subheader("Data Analysis & Insights (15 SQL Queries)")
 
- query_options = {
+    query_options = {
         "1a. Providers per City": """
             SELECT City, COUNT(*) AS Total_Providers FROM providers
             GROUP BY City ORDER BY Total_Providers DESC;
@@ -161,12 +160,13 @@ with tab2:
         """,
     }
 
- selected_query = st.selectbox("Choose a query to view:", list(query_options.keys()))
+    selected_query = st.selectbox("Choose a query to view:", list(query_options.keys()))
 
- result_df = pd.read_sql_query(query_options[selected_query], conn)
- st.dataframe(result_df, use_container_width=True)   
- with tab3:
+    result_df = pd.read_sql_query(query_options[selected_query], conn)
+    st.dataframe(result_df, use_container_width=True)
 
+# ---------- TAB 3: Contact Providers ----------
+with tab3:
     st.subheader("Provider Contact Directory")
     st.write("Find providers in your city and get their contact details directly.")
 
@@ -190,7 +190,7 @@ with tab2:
     st.write(f"**{len(contact_df)} provider(s) found in {selected_contact_city}**")
     st.dataframe(contact_df, use_container_width=True)
 
-# ---------- TAB 4: Manage Records ----------
+# ---------- TAB 4: Manage Records (CRUD) ----------
 with tab4:
     st.subheader("Add / Edit / Delete Food Listings")
 
