@@ -1,6 +1,21 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
+import os
+
+# Agar database file exist nahi karti, to CSV files se naya bana do
+if not os.path.exists("food_wastage.db"):
+    providers = pd.read_csv("providers_data.csv")
+    receivers = pd.read_csv("receivers_data.csv")
+    food_listings = pd.read_csv("food_listings_cleaned.csv")
+    claims = pd.read_csv("claims_cleaned.csv")
+
+    conn_setup = sqlite3.connect("food_wastage.db")
+    providers.to_sql("providers", conn_setup, if_exists="replace", index=False)
+    receivers.to_sql("receivers", conn_setup, if_exists="replace", index=False)
+    food_listings.to_sql("food_listings", conn_setup, if_exists="replace", index=False)
+    claims.to_sql("claims", conn_setup, if_exists="replace", index=False)
+    conn_setup.close()
 
 # Page setup
 st.set_page_config(page_title="Local Food Wastage Management", layout="wide")
