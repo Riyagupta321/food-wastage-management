@@ -1,6 +1,8 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 
 # Database ko hamesha fresh banao (taaki purana/corrupt file na ho cloud par)
 try:
@@ -29,11 +31,12 @@ st.write("Connecting surplus food providers with people who need it.")
 conn = sqlite3.connect("food_wastage.db", check_same_thread=False)
 
 # Create 4 tabs
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🔍 Filter Listings",
     "📊 SQL Insights",
     "📞 Contact Providers",
-    "✏️ Manage Records"
+    "✏️ Manage Records",
+    "📈 EDA Dashboard"
 ])
 
 # ---------- TAB 1: Filter Listings ----------
@@ -289,3 +292,93 @@ with tab4:
                 cursor.execute("DELETE FROM food_listings WHERE Food_ID = ?", (food_id_to_delete,))
                 conn.commit()
                 st.success(f"✅ Food_ID {food_id_to_delete} deleted successfully.")
+                # ---------- TAB 5: EDA Dashboard ----------
+with tab5:
+    st.subheader("Exploratory Data Analysis & Dashboard")
+    st.write("Visual insights into food donation and claim patterns.")
+
+    # ----- Key Metrics -----
+    m1, m2, m3, m4 = st.columns(4)
+
+    total_food = pd.read_sql_query("SELECT SUM(Quantity) AS T FROM food_listings", conn)["T"].iloc[0]
+    total_providers = pd.read_sql_query("SELECT COUNT(*) AS T FROM providers", conn)["T"].iloc[0]
+    total_receivers = pd.read_sql_query("SELECT COUNT(*) AS T FROM receivers", conn)["T"].iloc[0]
+    completed_pct = pd.read_sql_query("""
+        SELECT ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM claims), 1) AS T
+        FROM claims WHERE Status = 'Completed'
+    """, conn)["T"].iloc[0]
+
+    m1.metric("Total Food Quantity", f"{total_food:,}")
+    m2.metric("Total Providers", f"{total_providers:,}")
+    m3.metric("Total Receivers", f"{total_receivers:,}")
+    m4.metric("Claims Completed", f"{completed_pct}%")
+
+    st.divider()
+
+    # ----- Row 1: Donut + Horizontal Bar -----
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.write("#### 🍩 Claims Status Breakdown")
+        donut_data = pd.read_sql_query("SELECT Status, COUNT(*) AS Total FROM claims GROUP BY Status", conn)
+        fig1 = px.pie(donut_data, names="Status", values="Total", hole=0.5,
+                       color_discrete_sequence=px.colors.qualitative.Set2)
+        fig1.update_traces(textinfo="percent+label")
+        st.plotly_chart(fig1, use_container_width=True)
+
+    with col2:
+        st.write("#### 🏙️ Top 10 Cities by Food Listings")
+        city_data = pd.read_sql_query("""
+            SELECT Location AS City, COUNT(*) AS Total_Listings
+            FROM food_listings GROUP BY Location ORDER BY Total_Listings DESC LIMIT 10
+        """, conn)
+        fig2 = px.bar(city_data, x="Total_Listings", y="City", orientation="h",
+                       color="Total_Listings", color_continuous_scale="Blues")
+        fig2.update_layout(yaxis=dict(autorange="reversed"))
+        st.plotly_chart(fig2, use_container_width=True)
+
+    # ----- Row 2: Funnel + Radar -----
+    col3, col4 = st.columns(2)
+
+    with col3:
+        st.write("#### 🌅 Food Contribution Funnel (by Provider Type)")
+        funnel_data = pd.read_sql_query("""
+            SELECT Provider_Type, SUM(Quantity) AS Total_Quantity
+            FROM food_listings GROUP BY Provider_Type ORDER BY Total_Quantity DESC
+        """, conn)
+        fig3 = px.funnel(funnel_data, x="Total_Quantity", y="Provider_Type")
+        st.plotly_chart(fig3, use_container_width=True)
+
+    with col4:
+        st.write("#### 🎯 Claims by Meal Type")
+        meal_data = pd.read_sql_query("""
+            SELECT Meal_Type, COUNT(*) AS Total_Claims
+            FROM claims c JOIN food_listings f ON c.Food_ID = f.Food_ID
+            GROUP BY Meal_Type ORDER BY Total_Claims DESC
+        """, conn)
+        fig4 = go.Figure(data=go.Scatterpolar(
+            r=meal_data["Total_Claims"], theta=meal_data["Meal_Type"], fill="toself"
+        ))
+        fig4.update_layout(polar=dict(radialaxis=dict(visible=True)), showlegend=False)
+        st.plotly_chart(fig4, use_container_width=True)
+
+    # ----- Row 3: Treemap (full width) -----
+    st.write("#### 🔥 Food Type Distribution")
+    treemap_data = pd.read_sql_query("""
+        SELECT Food_Type, COUNT(*) AS Total_Items
+        FROM food_listings GROUP BY Food_Type ORDER BY Total_Items DESC
+    """, conn)
+    fig5 = px.treemap(treemap_data, path=["Food_Type"], values="Total_Items",
+                       color="Total_Items", color_continuous_scale="Greens")
+    st.plotly_chart(fig5, use_container_width=True)
+
+    # ----- Row 4: Line/Area chart (Top 10 receivers by claims) -----
+    st.write("#### 📈 Top 10 Receivers by Total Claims")
+    receiver_data = pd.read_sql_query("""
+        SELECT r.Name, COUNT(c.Claim_ID) AS Total_Claims
+        FROM claims c JOIN receivers r ON c.Receiver_ID = r.Receiver_ID
+        GROUP BY r.Receiver_ID ORDER BY Total_Claims DESC LIMIT 10
+    """, conn)
+    fig6 = px.area(receiver_data, x="Name", y="Total_Claims", markers=True,
+                    color_discrete_sequence=["#2E75B6"])
+    st.plotly_chart(fig6, use_container_width=True)
