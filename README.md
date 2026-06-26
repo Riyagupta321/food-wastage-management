@@ -2,16 +2,19 @@
 
 A data-driven web app to track and reduce food waste.
 
-## 🌐 Live Demo
-[Click here to view dashboard](food-wastage-riya.streamlit.app)
+## 🔗 Live App
+👉 [food-wastage-riya.streamlit.app](https://food-wastage-riya.streamlit.app)
 
 ## Technologies Used
 - Python
 - Streamlit
 - Pandas
 - Matplotlib / Plotly
+- sql
 
 ## Features
-- Interactive dashboard
-- Food waste tracking
-- Data visualization with charts
+- 🔍 Filter food listings by city, type, meal
+- 📊 15 SQL analytical queries with results
+- 📞 Provider contact directory
+- ✏️ Add, update, delete food listings (CRUD)
+- 📈 EDA Dashboard with 6 interactive charts
